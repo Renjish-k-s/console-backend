@@ -1,6 +1,15 @@
-def main():
-    print("Hello from console-backent!")
+from fastapi import FastAPI
+
+from src.authentication.routes import register
 
 
-if __name__ == "__main__":
-    main()
+
+app=FastAPI(
+    title="Console Backend",
+    version="v0",
+    decription="Backend for Console Application",
+    )
+app = FastAPI()
+
+
+app.include_router(register.router)
