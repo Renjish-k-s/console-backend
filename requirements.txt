@@ -5,3 +5,5 @@ alembic
 aiosqlite
 pydantic[email]
 dotenv
+passlib
+bcrypt

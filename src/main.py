@@ -9,7 +9,6 @@ app=FastAPI(
     version="v0",
     decription="Backend for Console Application",
     )
-app = FastAPI()
 
 
 app.include_router(register.router)

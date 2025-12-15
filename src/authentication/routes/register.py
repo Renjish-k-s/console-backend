@@ -2,11 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from src.database import get_db
-from src.authentication.schema.register import OTPCreate, OTPVerify
+from src.authentication.schema.register import OTPCreate, OTPVerify, TenentCreate
+from starlette.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_400_BAD_REQUEST
 from src.authentication.utils.utils import generate_otp
 from datetime import datetime, timedelta
 from src.authentication.utils.mailer import send_email
 from src.authentication.models.otp import OTP
+from src.tenent.models.tenent import Tenent
+from src.tenent.models.user import User
+from src.tenent.models.role import Role
+from src.tenent.models.roleusermapping import RoleUserMapping
+from src.authentication.utils.utils import hash_password
+from sqlalchemy.exc import IntegrityError
+
 
 router = APIRouter(
     prefix="/auth",
@@ -45,7 +53,7 @@ async def send_otp(
                 db_otp.otp = otp_tosend
                 await db.commit()
                 await db.refresh(db_otp)
-                
+
                 return {"detail": "OTP resent successfully"}
 
             else:
@@ -76,7 +84,7 @@ async def send_otp(
             )
 
 
-@router.post("/verifyotp")
+@router.post("/verifyotp", status_code=HTTP_200_OK)
 async def send_otp(
     otp: OTPVerify,
     db: AsyncSession = Depends(get_db)
@@ -113,3 +121,80 @@ async def send_otp(
     await db.refresh(db_otp)
 
     return {"detail": "OTP verified successfully"}
+
+
+@router.post("/register-tenent", status_code=HTTP_200_OK)
+async def register_tenent(
+    tenent: TenentCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    #  Check tenant name uniqueness
+    stmt = select(Tenent).where(
+        Tenent.organization_name == tenent.organization_name
+    )
+    result = await db.execute(stmt)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Organization name already exists"
+        )
+
+    #  Check admin email uniqueness
+    stmt = select(User).where(User.email == tenent.admin_email)
+    result = await db.execute(stmt)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+
+    try:
+        # Create tenant
+        new_tenent = Tenent(
+            organization_name=tenent.organization_name
+        )
+        db.add(new_tenent)
+        await db.flush()  # gets new_tenent.id without commit
+
+        # Create admin role
+        admin_role = Role(
+            tenent_id=new_tenent.id,
+            role_name="Admin"
+        )
+        db.add(admin_role)
+        await db.flush()
+
+        # Create admin user
+        admin_user = User(
+            tenent_id=new_tenent.id,
+            username=tenent.admin_username,
+            email=tenent.admin_email,
+            hashed_password=hash_password(tenent.admin_password)
+        )
+        db.add(admin_user)
+        await db.flush()
+
+        #  Map user to role
+        role_user_map = RoleUserMapping(
+            tenent_id=new_tenent.id,
+            user_id=admin_user.id,
+            role_id=admin_role.id
+        )
+        db.add(role_user_map)
+
+        #  Commit transaction
+        await db.commit()
+
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Integrity error while creating tenant"
+        )
+
+    return {
+        "detail": "Tenant and admin user created successfully"
+    }
+
+
+    
