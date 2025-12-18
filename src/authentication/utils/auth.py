@@ -10,6 +10,8 @@ from src.database import get_db
 from src.tenent.models.user import User
 from src import config
 from fastapi.security import OAuth2PasswordBearer
+import uuid
+from src.tenent.schema.tenent_user import TokenData
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
@@ -36,24 +38,94 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> b
     return user
 
 
-def create_access_token(data: Dict[str, str], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    data: Dict[str, str],
+    expires_delta: Optional[timedelta] = None
+) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(tz=timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(tz=timezone.utc) + timedelta(minutes=15)
+    to_encode["jti"] = str(uuid.uuid4())
+
+    expire = datetime.now(tz=timezone.utc) + (
+        expires_delta or timedelta(minutes=15)
+    )
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, config.SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+
+    return jwt.encode(to_encode, config.SECRET_KEY, algorithm=ALGORITHM)
 
 
-
-def create_refresh_token(data: dict, expires_delta: timedelta | None = None):
+def create_refresh_token(
+    data: Dict[str, str],
+    expires_delta: Optional[timedelta] = None
+) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode["jti"] = str(uuid.uuid4())
+
+    expire = datetime.now(tz=timezone.utc) + (
+        expires_delta or timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    )
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, config.SECRET_KEY_REFRESH, algorithm=ALGORITHM)
-    return encoded_jwt
+
+    return jwt.encode(
+        to_encode, config.SECRET_KEY_REFRESH, algorithm=ALGORITHM
+    )
+
+# ----------
+
+def verify_refresh_token(token: str):
+    try:
+        payload = jwt.decode(token, config.SECRET_KEY_REFRESH, algorithms=ALGORITHM)
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        return username
+    except jwt.JWTError:
+        return None
+    
+
+
+def decode_access_token(token: str) -> dict | None:
+    try:
+        return jwt.decode(
+            token, config.SECRET_KEY, algorithms=[ALGORITHM]
+        )
+    except JWTError:
+        return None
+
+
+def decode_refresh_token(token: str) -> dict | None:
+    try:
+        return jwt.decode(
+            token, config.SECRET_KEY_REFRESH, algorithms=[ALGORITHM]
+        )
+    except JWTError:
+        return None
+    
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials"
+    )
+    try:
+        payload = jwt.decode(token, config.SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+
+    result = await db.execute(select(User).filter(User.email == token_data.username))
+    user = result.scalars().first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+    """You can have some custom logic about the User.
+    Here I am chcking the User is active or not."""
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user

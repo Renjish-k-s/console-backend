@@ -13,7 +13,7 @@ def send_email(receiver_email: str, otp: int) -> bool:
     try:
         # Create message container
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Secure Verification Code - Product Studio"
+        msg["Subject"] = "{otp}-Verification Code - Product Studio"
         msg["From"] = SMTP_USER
         msg["To"] = receiver_email
 
@@ -126,4 +126,3 @@ def send_email(receiver_email: str, otp: int) -> bool:
         return False
 
 
-send_email("renjishksimon@gmail.com", "1234")

@@ -6,10 +6,13 @@ from sqlalchemy import pool
 from alembic import context
 
 from src.authentication.models.otp import OTPBase
+from src.authentication.models.invalidtoken import InvalidTokenBase
+
 from src.tenent.models.tenent import TenentBase
 from src.tenent.models.user import UserBase
 from src.tenent.models.role import RoleBase
 from src.tenent.models.roleusermapping import RoleUserMappingBase
+
 
 
 # this is the Alembic Config object, which provides
@@ -25,7 +28,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = [OTPBase.metadata,TenentBase.metadata,UserBase.metadata,RoleBase.metadata,RoleUserMappingBase.metadata]
+target_metadata = [OTPBase.metadata,TenentBase.metadata,UserBase.metadata,RoleBase.metadata,RoleUserMappingBase.metadata,InvalidTokenBase.metadata]
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
