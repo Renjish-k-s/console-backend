@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from src.authentication.routes import register
+from src.authentication.routes import register, login
 
 
 
@@ -12,3 +12,4 @@ app=FastAPI(
 
 
 app.include_router(register.router)
+app.include_router(login.router)
